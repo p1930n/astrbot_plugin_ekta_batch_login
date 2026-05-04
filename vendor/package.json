@@ -1,0 +1,14 @@
+{
+  "name": "astrbot-plugin-ekta-batch-login-runner",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Node runner for AstrBot second-class activity QR batch processing.",
+  "main": "ekta_batch_login.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "jpeg-js": "^0.4.4",
+    "jsqr": "^1.4.0"
+  }
+}

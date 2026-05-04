@@ -1,0 +1,77 @@
+{
+  "node_path": {
+    "description": "Node.js 可执行文件路径；需要 Node.js 18 或更高版本",
+    "type": "string",
+    "default": "node"
+  },
+  "accounts_csv": {
+    "description": "账号 CSV 路径，格式为 code,password；默认读取 data/ekta_batch_login/accounts.csv",
+    "type": "string",
+    "default": ""
+  },
+  "school_code": {
+    "description": "可选学校 ID；留空时执行器从第二课堂学校列表读取默认学校",
+    "type": "string",
+    "default": ""
+  },
+  "delay_ms": {
+    "description": "同一二维码下每个账号之间的延迟，单位毫秒，范围 0-60000",
+    "type": "int",
+    "default": 1000
+  },
+  "max_accounts_per_run": {
+    "description": "单次任务最多处理账号数，范围 1-500",
+    "type": "int",
+    "default": 80
+  },
+  "max_images_per_run": {
+    "description": "单次任务最多处理图片数，范围 1-20",
+    "type": "int",
+    "default": 8
+  },
+  "pending_timeout_seconds": {
+    "description": ".ekta add 未带图片时等待下一条图片消息的秒数，范围 10-600",
+    "type": "int",
+    "default": 60
+  },
+  "run_timeout_seconds": {
+    "description": "单次 Node 执行器最长运行秒数，范围 30-7200",
+    "type": "int",
+    "default": 900
+  },
+  "dry_run_by_default": {
+    "description": "默认只解析和检测，不提交活动报名或签到",
+    "type": "bool",
+    "default": false
+  },
+  "allow_group_manager": {
+    "description": "允许群管理员或群主使用 .ekta 命令；关闭后仅 AstrBot 管理员可用",
+    "type": "bool",
+    "default": true
+  },
+  "realtime_progress": {
+    "description": "后台任务执行时发送开始消息，并实时发送失败/跳过账号；完成汇总总会发送",
+    "type": "bool",
+    "default": true
+  },
+  "send_success_detail": {
+    "description": "实时发送成功/已完成账号状态；关闭时只实时发送失败/跳过并在每个二维码完成后汇总",
+    "type": "bool",
+    "default": false
+  },
+  "progress_message_interval": {
+    "description": "send_success_detail 开启时的成功/已完成进度消息间隔，范围 1-50；失败和跳过状态总会发送",
+    "type": "int",
+    "default": 5
+  },
+  "max_queued_qr_tasks": {
+    "description": "后台队列最多保留的二维码任务数，范围 1-500",
+    "type": "int",
+    "default": 50
+  },
+  "max_completion_detail_lines": {
+    "description": "每个二维码完成汇总中最多附带的失败/跳过明细条数，0 表示不附带，范围 0-200",
+    "type": "int",
+    "default": 30
+  }
+}
