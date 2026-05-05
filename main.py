@@ -15,7 +15,7 @@ from .runtime import EktaNodeRunner, EktaTaskQueue, PendingImageSessions
 PLUGIN_NAME = "astrbot_plugin_ekta_batch_login"
 PLUGIN_AUTHOR = "p1930n"
 PLUGIN_DESCRIPTION = "第二课堂活动报名与签到二维码批量处理插件。"
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.1.2"
 PLUGIN_REPO = ""
 
 
@@ -46,6 +46,7 @@ class EktaBatchLoginPlugin(Star):
         self._task_queue.start()
         self._commands = EktaCommandService(
             context=context,
+            plugin_version=PLUGIN_VERSION,
             settings=settings,
             runner=runner,
             account_store=CsvAccountStore(settings.accounts_csv),

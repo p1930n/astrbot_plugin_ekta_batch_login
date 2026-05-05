@@ -41,6 +41,7 @@ class EktaCommandService:
         self,
         *,
         context: Any,
+        plugin_version: str,
         settings: EktaSettings,
         runner: EktaNodeRunner,
         account_store: CsvAccountStore,
@@ -48,6 +49,7 @@ class EktaCommandService:
         task_queue: EktaTaskQueue,
     ) -> None:
         self._context = context
+        self._plugin_version = plugin_version
         self._settings = settings
         self._runner = runner
         self._account_store = account_store
@@ -119,6 +121,8 @@ class EktaCommandService:
         return "\n".join(
             (
                 "第二课堂批量插件状态",
+                f"插件版本: {self._plugin_version}",
+                "图片格式: JPG/PNG",
                 f"账号 CSV: {accounts_status}",
                 f"最大账号数: {self._settings.max_accounts_per_run}",
                 f"最大图片数: {self._settings.max_images_per_run}",
