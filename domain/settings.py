@@ -14,6 +14,9 @@ DEFAULT_SEND_SUCCESS_DETAIL = False
 DEFAULT_PROGRESS_MESSAGE_INTERVAL = 5
 DEFAULT_MAX_QUEUED_QR_TASKS = 50
 DEFAULT_MAX_COMPLETION_DETAIL_LINES = 30
+DEFAULT_AUTO_INSTALL_NODE_DEPENDENCIES = True
+DEFAULT_NPM_PATH = "npm"
+DEFAULT_NODE_DEPENDENCY_INSTALL_TIMEOUT_SECONDS = 180
 MIN_DELAY_MS = 0
 MAX_DELAY_MS = 60_000
 MIN_MAX_ACCOUNTS = 1
@@ -30,6 +33,8 @@ MIN_MAX_QUEUED_QR_TASKS = 1
 MAX_MAX_QUEUED_QR_TASKS = 500
 MIN_MAX_COMPLETION_DETAIL_LINES = 0
 MAX_MAX_COMPLETION_DETAIL_LINES = 200
+MIN_NODE_DEPENDENCY_INSTALL_TIMEOUT_SECONDS = 10
+MAX_NODE_DEPENDENCY_INSTALL_TIMEOUT_SECONDS = 1800
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +54,9 @@ class EktaSettings:
     progress_message_interval: int
     max_queued_qr_tasks: int
     max_completion_detail_lines: int
+    auto_install_node_dependencies: bool
+    npm_path: str
+    node_dependency_install_timeout_seconds: int
 
     @classmethod
     def from_config(
@@ -120,6 +128,17 @@ class EktaSettings:
                 default=DEFAULT_MAX_COMPLETION_DETAIL_LINES,
                 minimum=MIN_MAX_COMPLETION_DETAIL_LINES,
                 maximum=MAX_MAX_COMPLETION_DETAIL_LINES,
+            ),
+            auto_install_node_dependencies=_bool_value(
+                data.get("auto_install_node_dependencies"),
+                DEFAULT_AUTO_INSTALL_NODE_DEPENDENCIES,
+            ),
+            npm_path=_string_value(data.get("npm_path"), DEFAULT_NPM_PATH),
+            node_dependency_install_timeout_seconds=_bounded_int(
+                data.get("node_dependency_install_timeout_seconds"),
+                default=DEFAULT_NODE_DEPENDENCY_INSTALL_TIMEOUT_SECONDS,
+                minimum=MIN_NODE_DEPENDENCY_INSTALL_TIMEOUT_SECONDS,
+                maximum=MAX_NODE_DEPENDENCY_INSTALL_TIMEOUT_SECONDS,
             ),
         )
 

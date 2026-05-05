@@ -44,12 +44,14 @@ code,password
 
 执行器需要 Node.js 18 或更高版本。
 
-插件优先使用 `vendor/node_modules`，没有时会回退到现有的 `data/ekta_batch_login/node_modules`。服务器安装或更新插件后，需要在插件自带的 `vendor` 目录安装 Node 依赖：
+插件优先使用 `vendor/node_modules`，没有时会回退到现有的 `data/ekta_batch_login/node_modules`。默认开启 `auto_install_node_dependencies`，首次执行 `.ekta add` 或后台任务时如果缺少 Node 依赖，会自动在插件自带的 `vendor` 目录执行：
 
 ```powershell
 cd data/plugins/astrbot_plugin_ekta_batch_login/vendor
 npm install --omit=dev
 ```
+
+如果服务器中的 npm 路径不是 `npm`，可以在插件配置里调整 `npm_path`。自动安装失败时，可以手动执行同一条命令。
 
 如果 AstrBot 部署在 `/AstrBot`，对应命令通常是：
 

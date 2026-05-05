@@ -2,7 +2,7 @@ name: astrbot_plugin_ekta_batch_login
 display_name: 第二课堂批量处理
 desc: 通过图片二维码批量加入第二课堂活动并处理签到/签退。
 author: p1930n
-version: 0.1.4
+version: 0.1.5
 help: .ekta help
 repo: "https://github.com/p1930n/astrbot_plugin_ekta_batch_login"
 support_platforms:

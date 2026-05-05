@@ -4,6 +4,21 @@
     "type": "string",
     "default": "node"
   },
+  "npm_path": {
+    "description": "npm 可执行文件路径；auto_install_node_dependencies 开启时用于自动安装 vendor/package.json 里的 Node 依赖",
+    "type": "string",
+    "default": "npm"
+  },
+  "auto_install_node_dependencies": {
+    "description": "首次使用执行器时自动在插件 vendor 目录执行 npm install --omit=dev 安装 Node 依赖",
+    "type": "bool",
+    "default": true
+  },
+  "node_dependency_install_timeout_seconds": {
+    "description": "自动安装 Node 依赖的最长等待秒数，范围 10-1800",
+    "type": "int",
+    "default": 180
+  },
   "accounts_csv": {
     "description": "账号 CSV 路径，格式为 code,password；默认读取 data/ekta_batch_login/accounts.csv",
     "type": "string",

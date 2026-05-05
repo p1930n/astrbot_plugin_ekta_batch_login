@@ -7,7 +7,7 @@ from astrbot.api.event import AstrMessageEvent
 from ..domain.accounts import AccountCsvError, CsvAccountStore
 from ..domain.settings import EktaSettings
 from ..platform.event_adapter import EventSnapshot, dehydrate_event, extract_image_sources
-from ..runtime.node_runner import EktaNodeRunner
+from ..runtime.node_runner import EktaNodeDependencyError, EktaNodeRunner
 from ..runtime.pending_sessions import PendingImageSessions
 from ..runtime.task_queue import EktaTaskQueue
 
@@ -117,12 +117,16 @@ class EktaCommandService:
     async def status(self) -> str:
         accounts_status = "存在" if self._settings.accounts_csv.is_file() else "缺失"
         mode = "dry-run" if self._settings.dry_run_by_default else "真实提交"
+        node_dependency_status = await self._runner.node_dependency_status(
+            self._settings,
+        )
         queue_status = await self._task_queue.status()
         return "\n".join(
             (
                 "第二课堂批量插件状态",
                 f"插件版本: {self._plugin_version}",
                 "图片格式: JPG/PNG",
+                f"Node 依赖: {node_dependency_status}",
                 f"账号 CSV: {accounts_status}",
                 f"最大账号数: {self._settings.max_accounts_per_run}",
                 f"最大图片数: {self._settings.max_images_per_run}",
@@ -177,10 +181,13 @@ class EktaCommandService:
         if not origin:
             return "无法获取当前会话，不能创建后台队列任务。"
 
-        payload = await self._runner.decode_images(
-            settings=self._settings,
-            image_sources=image_sources,
-        )
+        try:
+            payload = await self._runner.decode_images(
+                settings=self._settings,
+                image_sources=image_sources,
+            )
+        except EktaNodeDependencyError as exc:
+            return str(exc)
         tasks = payload.get("tasks") if isinstance(payload.get("tasks"), list) else []
         if not tasks:
             return _format_no_qr_tasks(payload)
