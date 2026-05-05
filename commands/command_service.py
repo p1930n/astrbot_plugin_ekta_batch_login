@@ -4,6 +4,7 @@ from typing import Any
 
 from astrbot.api.event import AstrMessageEvent
 
+from ..domain.accounts import AccountCsvError, CsvAccountStore
 from ..domain.settings import EktaSettings
 from ..platform.event_adapter import EventSnapshot, dehydrate_event, extract_image_sources
 from ..runtime.node_runner import EktaNodeRunner
@@ -15,6 +16,9 @@ HELP_TEXT = "\n".join(
     (
         ".ekta add [--dry-run] - 解析本条图片并加入后台队列",
         ".ekta add - 本条无图片时，等待同一用户下一条图片消息",
+        ".ekta account add <account> <password> - 添加或更新本地账号 CSV",
+        ".ekta account delete <account> - 删除本地账号",
+        ".ekta account list - 显示本地账号和密码",
         ".ekta status - 查看账号 CSV、执行器和队列状态",
     )
 )
@@ -22,6 +26,14 @@ PERMISSION_DENIED = "需要 AstrBot 管理员或群管理员权限。"
 NO_IMAGE_WAITING = "未检测到图片，请在 {seconds} 秒内发送一条带二维码图片的消息。"
 NO_IMAGE_CANCELLED = "未收到图片，已取消本次第二课堂任务。"
 NO_ACCOUNTS = "账号 CSV 不存在或不可读，请先配置 accounts_csv。"
+ACCOUNT_USAGE = "\n".join(
+    (
+        "用法:",
+        ".ekta account add <account> <password>",
+        ".ekta account delete <account>",
+        ".ekta account list",
+    )
+)
 
 
 class EktaCommandService:
@@ -31,12 +43,14 @@ class EktaCommandService:
         context: Any,
         settings: EktaSettings,
         runner: EktaNodeRunner,
+        account_store: CsvAccountStore,
         pending_sessions: PendingImageSessions,
         task_queue: EktaTaskQueue,
     ) -> None:
         self._context = context
         self._settings = settings
         self._runner = runner
+        self._account_store = account_store
         self._pending_sessions = pending_sessions
         self._task_queue = task_queue
 
@@ -75,6 +89,29 @@ class EktaCommandService:
     def help(self) -> str:
         return HELP_TEXT
 
+    async def account(
+        self,
+        event: AstrMessageEvent,
+        action: str = "",
+        account: str = "",
+        password: str = "",
+    ) -> str:
+        snapshot = dehydrate_event(event)
+        if not self._can_use(snapshot):
+            return PERMISSION_DENIED
+
+        normalized_action = action.strip().casefold()
+        try:
+            if normalized_action == "add":
+                return await self._account_add(account, password)
+            if normalized_action in {"delete", "del", "remove", "rm"}:
+                return await self._account_delete(account)
+            if normalized_action in {"list", "ls"}:
+                return await self._account_list()
+        except AccountCsvError as exc:
+            return str(exc)
+        return ACCOUNT_USAGE
+
     async def status(self) -> str:
         accounts_status = "存在" if self._settings.accounts_csv.is_file() else "缺失"
         mode = "dry-run" if self._settings.dry_run_by_default else "真实提交"
@@ -89,6 +126,36 @@ class EktaCommandService:
                 queue_status,
             )
         )
+
+    async def _account_add(self, account: str, password: str) -> str:
+        if not account or not password:
+            return "缺少账号或密码。\n" + ACCOUNT_USAGE
+        result = await self._account_store.add(account, password)
+        action = "已更新" if result.existed else "已添加"
+        return f"{action}账号 {result.account}，当前账号数 {result.count}。"
+
+    async def _account_delete(self, account: str) -> str:
+        if not account:
+            return "缺少账号。\n" + ACCOUNT_USAGE
+        result = await self._account_store.delete(account)
+        if not result.existed:
+            return f"账号 {result.account} 不存在，当前账号数 {result.count}。"
+        return f"已删除账号 {result.account}，当前账号数 {result.count}。"
+
+    async def _account_list(self) -> str:
+        result = await self._account_store.list_accounts()
+        if result.total == 0:
+            return "账号 CSV 为空。"
+        lines = [f"账号列表（共 {result.total} 个，显示密码）"]
+        lines.extend(
+            f"{index}. {item.code}, {item.password}"
+            for index, item in enumerate(result.accounts, start=1)
+        )
+        if result.omitted:
+            lines.append(
+                f"... 其余 {result.omitted} 个账号未显示，单次最多显示 {result.display_limit} 个。"
+            )
+        return "\n".join(lines)
 
     async def _enqueue_images(
         self,

@@ -9,6 +9,7 @@ AstrBot 第二课堂活动报名与签到/签退二维码批量处理插件。
 - 后台双队列处理：活动加入任务优先，活动队列清空后再处理签到/签退任务。
 - 执行中发送任务开始、失败/跳过账号、任务完成汇总消息。
 - 账号从本地 CSV 读取，不从聊天消息接收账号密码。
+- 管理员可通过 `.ekta account` 子命令维护本地账号 CSV。
 
 ## 账号 CSV
 
@@ -31,9 +32,13 @@ code,password
 .ekta help
 .ekta status
 .ekta add [--dry-run]
+.ekta account add <account> <password>
+.ekta account delete <account>
+.ekta account list
 ```
 
 `.ekta add` 当前消息未携带图片时，会等待同一用户的下一条图片消息。
+`.ekta account list` 会显示账号和密码，仅限有权限用户使用。
 
 ## Node 依赖
 

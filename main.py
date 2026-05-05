@@ -8,7 +8,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
 from .commands import EktaCommandService
-from .domain import EktaSettings
+from .domain import CsvAccountStore, EktaSettings
 from .runtime import EktaNodeRunner, EktaTaskQueue, PendingImageSessions
 
 
@@ -48,6 +48,7 @@ class EktaBatchLoginPlugin(Star):
             context=context,
             settings=settings,
             runner=runner,
+            account_store=CsvAccountStore(settings.accounts_csv),
             pending_sessions=self._pending_sessions,
             task_queue=self._task_queue,
         )
@@ -67,6 +68,24 @@ class EktaBatchLoginPlugin(Star):
     @ekta.command("help")
     async def ekta_help(self, event: AstrMessageEvent):
         yield event.plain_result(self._commands.help())
+
+    @ekta.command("account")
+    async def ekta_account(
+        self,
+        event: AstrMessageEvent,
+        action: str = "",
+        account: str = "",
+        password: str = "",
+    ):
+        yield event.plain_result(
+            await self._handle_command(
+                event,
+                self._commands.account,
+                action,
+                account,
+                password,
+            )
+        )
 
     @ekta.command("status")
     async def ekta_status(self, event: AstrMessageEvent):
