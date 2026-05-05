@@ -11,6 +11,9 @@ const ACTIVITY_QR_SOURCE = "schActivityCode@Xj";
 const DEFAULT_DELAY_MS = 1000;
 const DEFAULT_MAX_ACCOUNTS = 80;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const MAX_QR_DECODE_ATTEMPTS = 60;
+const MAX_DARK_CANDIDATE_BOXES = 16;
+const QR_TARGET_SIDE = 720;
 
 function loadDependency(name) {
   try {
@@ -268,13 +271,248 @@ async function decodeImageQr(source) {
   const jsQR = loadDependency("jsqr");
   const buffer = await readImageBuffer(source);
   const image = decodeImage(buffer);
-  const qr = jsQR(image.data, image.width, image.height, {
-    inversionAttempts: "attemptBoth",
-  });
+  const qr = scanQrImage(jsQR, image);
   if (!qr) {
     throw new Error("没有识别到二维码");
   }
   return qr.data;
+}
+
+function scanQrImage(jsQR, image) {
+  const boxes = candidateQrBoxes(image);
+  let attempts = 0;
+
+  for (const box of boxes) {
+    const cropped = cropImage(image, box);
+    const variants = imageVariants(cropped);
+    for (const variant of variants) {
+      attempts += 1;
+      const qr = jsQR(variant.data, variant.width, variant.height, {
+        inversionAttempts: "attemptBoth",
+      });
+      if (qr) {
+        return qr;
+      }
+      if (attempts >= MAX_QR_DECODE_ATTEMPTS) {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function candidateQrBoxes(image) {
+  const boxes = [{ x: 0, y: 0, width: image.width, height: image.height }];
+  boxes.push(...centerSquareBoxes(image));
+  boxes.push(...darkSquareBoxes(image));
+  return dedupeBoxes(boxes, image.width, image.height);
+}
+
+function centerSquareBoxes(image) {
+  const boxes = [];
+  const baseSide = Math.min(image.width, image.height);
+  const sideScales = [0.28, 0.38, 0.52, 0.72, 0.9];
+  const centerYScales = [0.35, 0.45, 0.55, 0.65, 0.75];
+  for (const sideScale of sideScales) {
+    const side = Math.round(baseSide * sideScale);
+    for (const centerYScale of centerYScales) {
+      boxes.push(squareBox(image.width / 2, image.height * centerYScale, side, image.width, image.height));
+    }
+  }
+  return boxes;
+}
+
+function darkSquareBoxes(image) {
+  const width = image.width;
+  const height = image.height;
+  const minSide = Math.max(80, Math.round(Math.min(width, height) * 0.12));
+  const maxSide = Math.max(minSide, Math.round(Math.min(width, height) * 0.48));
+  const integral = buildDarkIntegral(image);
+  const candidates = [];
+
+  for (let side = minSide; side <= maxSide; side = Math.round(side * 1.32) + 1) {
+    const step = Math.max(16, Math.round(side / 4));
+    for (let y = 0; y <= height - side; y += step) {
+      for (let x = 0; x <= width - side; x += step) {
+        const darkCount = integralDarkCount(integral, width, x, y, side, side);
+        const density = darkCount / (side * side);
+        if (density < 0.04 || density > 0.55) {
+          continue;
+        }
+        const centerBonus = 1 - Math.min(0.35, Math.abs(x + side / 2 - width / 2) / width);
+        candidates.push({
+          box: expandBox({ x, y, width: side, height: side }, Math.round(side * 0.22), width, height),
+          score: density * centerBonus,
+        });
+      }
+    }
+  }
+
+  candidates.sort((left, right) => right.score - left.score);
+  const boxes = [];
+  for (const candidate of candidates) {
+    if (boxes.some((box) => boxOverlapRatio(box, candidate.box) > 0.55)) {
+      continue;
+    }
+    boxes.push(candidate.box);
+    if (boxes.length >= MAX_DARK_CANDIDATE_BOXES) {
+      break;
+    }
+  }
+  return boxes;
+}
+
+function imageVariants(image) {
+  const variants = [image, thresholdImage(image, 150), thresholdImage(image, 190)];
+  const maxSide = Math.max(image.width, image.height);
+  if (maxSide < QR_TARGET_SIDE) {
+    const scale = Math.max(2, Math.min(4, Math.ceil(QR_TARGET_SIDE / maxSide)));
+    const scaled = scaleImageNearest(image, scale);
+    variants.push(scaled, thresholdImage(scaled, 150), thresholdImage(scaled, 190));
+  }
+  return variants;
+}
+
+function buildDarkIntegral(image) {
+  const width = image.width;
+  const height = image.height;
+  const integral = new Uint32Array((width + 1) * (height + 1));
+  for (let y = 1; y <= height; y += 1) {
+    let rowSum = 0;
+    for (let x = 1; x <= width; x += 1) {
+      const index = ((y - 1) * width + (x - 1)) * 4;
+      const alpha = image.data[index + 3];
+      const luminance = (
+        image.data[index] * 299
+        + image.data[index + 1] * 587
+        + image.data[index + 2] * 114
+      ) / 1000;
+      rowSum += alpha > 32 && luminance < 128 ? 1 : 0;
+      const integralIndex = y * (width + 1) + x;
+      integral[integralIndex] = integral[integralIndex - width - 1] + rowSum;
+    }
+  }
+  return integral;
+}
+
+function integralDarkCount(integral, imageWidth, x, y, width, height) {
+  const stride = imageWidth + 1;
+  const left = x;
+  const top = y;
+  const right = x + width;
+  const bottom = y + height;
+  return (
+    integral[bottom * stride + right]
+    - integral[top * stride + right]
+    - integral[bottom * stride + left]
+    + integral[top * stride + left]
+  );
+}
+
+function cropImage(image, box) {
+  const data = new Uint8ClampedArray(box.width * box.height * 4);
+  for (let y = 0; y < box.height; y += 1) {
+    const sourceStart = ((box.y + y) * image.width + box.x) * 4;
+    const sourceEnd = sourceStart + box.width * 4;
+    data.set(image.data.subarray(sourceStart, sourceEnd), y * box.width * 4);
+  }
+  return { data, width: box.width, height: box.height };
+}
+
+function thresholdImage(image, threshold) {
+  const data = new Uint8ClampedArray(image.data.length);
+  for (let i = 0; i < image.data.length; i += 4) {
+    const alpha = image.data[i + 3];
+    const luminance = (
+      image.data[i] * 299
+      + image.data[i + 1] * 587
+      + image.data[i + 2] * 114
+    ) / 1000;
+    const value = alpha > 32 && luminance < threshold ? 0 : 255;
+    data[i] = value;
+    data[i + 1] = value;
+    data[i + 2] = value;
+    data[i + 3] = 255;
+  }
+  return { data, width: image.width, height: image.height };
+}
+
+function scaleImageNearest(image, scale) {
+  const width = image.width * scale;
+  const height = image.height * scale;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    const sourceY = Math.floor(y / scale);
+    for (let x = 0; x < width; x += 1) {
+      const sourceX = Math.floor(x / scale);
+      const sourceIndex = (sourceY * image.width + sourceX) * 4;
+      const targetIndex = (y * width + x) * 4;
+      data[targetIndex] = image.data[sourceIndex];
+      data[targetIndex + 1] = image.data[sourceIndex + 1];
+      data[targetIndex + 2] = image.data[sourceIndex + 2];
+      data[targetIndex + 3] = image.data[sourceIndex + 3];
+    }
+  }
+  return { data, width, height };
+}
+
+function squareBox(centerX, centerY, side, imageWidth, imageHeight) {
+  return clampBox({
+    x: Math.round(centerX - side / 2),
+    y: Math.round(centerY - side / 2),
+    width: side,
+    height: side,
+  }, imageWidth, imageHeight);
+}
+
+function expandBox(box, padding, imageWidth, imageHeight) {
+  return clampBox({
+    x: box.x - padding,
+    y: box.y - padding,
+    width: box.width + padding * 2,
+    height: box.height + padding * 2,
+  }, imageWidth, imageHeight);
+}
+
+function clampBox(box, imageWidth, imageHeight) {
+  const x = Math.max(0, Math.min(imageWidth - 1, box.x));
+  const y = Math.max(0, Math.min(imageHeight - 1, box.y));
+  const right = Math.max(x + 1, Math.min(imageWidth, box.x + box.width));
+  const bottom = Math.max(y + 1, Math.min(imageHeight, box.y + box.height));
+  return {
+    x,
+    y,
+    width: right - x,
+    height: bottom - y,
+  };
+}
+
+function dedupeBoxes(boxes, imageWidth, imageHeight) {
+  const deduped = [];
+  for (const rawBox of boxes) {
+    const box = clampBox(rawBox, imageWidth, imageHeight);
+    if (box.width < 20 || box.height < 20) {
+      continue;
+    }
+    if (deduped.some((existing) => boxOverlapRatio(existing, box) > 0.88)) {
+      continue;
+    }
+    deduped.push(box);
+  }
+  return deduped;
+}
+
+function boxOverlapRatio(left, right) {
+  const x1 = Math.max(left.x, right.x);
+  const y1 = Math.max(left.y, right.y);
+  const x2 = Math.min(left.x + left.width, right.x + right.width);
+  const y2 = Math.min(left.y + left.height, right.y + right.height);
+  if (x2 <= x1 || y2 <= y1) {
+    return 0;
+  }
+  const intersection = (x2 - x1) * (y2 - y1);
+  const smallerArea = Math.min(left.width * left.height, right.width * right.height);
+  return intersection / smallerArea;
 }
 
 function decodeImage(buffer) {
