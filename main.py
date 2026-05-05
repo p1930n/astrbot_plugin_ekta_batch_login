@@ -15,7 +15,7 @@ from .runtime import EktaNodeRunner, EktaTaskQueue, PendingImageSessions
 PLUGIN_NAME = "astrbot_plugin_ekta_batch_login"
 PLUGIN_AUTHOR = "p1930n"
 PLUGIN_DESCRIPTION = "第二课堂活动报名与签到二维码批量处理插件。"
-PLUGIN_VERSION = "0.1.3"
+PLUGIN_VERSION = "0.1.4"
 PLUGIN_REPO = "https://github.com/p1930n/astrbot_plugin_ekta_batch_login"
 
 

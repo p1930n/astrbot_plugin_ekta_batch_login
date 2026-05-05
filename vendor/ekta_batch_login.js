@@ -17,7 +17,11 @@ function loadDependency(name) {
     return require(name);
   } catch (_) {
     const fallback = path.resolve(__dirname, "../../../ekta_batch_login/node_modules", name);
-    return require(fallback);
+    try {
+      return require(fallback);
+    } catch (_) {
+      throw new Error(`缺少 Node 依赖 ${name}，请在插件 vendor 目录运行 npm install --omit=dev`);
+    }
   }
 }
 

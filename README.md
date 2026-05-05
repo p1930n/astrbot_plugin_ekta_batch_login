@@ -44,16 +44,23 @@ code,password
 
 执行器需要 Node.js 18 或更高版本。
 
-插件优先使用 `vendor/node_modules`，没有时会回退到现有的 `data/ekta_batch_login/node_modules`。如果独立安装依赖：
+插件优先使用 `vendor/node_modules`，没有时会回退到现有的 `data/ekta_batch_login/node_modules`。服务器安装或更新插件后，需要在插件自带的 `vendor` 目录安装 Node 依赖：
 
 ```powershell
 cd data/plugins/astrbot_plugin_ekta_batch_login/vendor
-npm install
+npm install --omit=dev
+```
+
+如果 AstrBot 部署在 `/AstrBot`，对应命令通常是：
+
+```bash
+cd /AstrBot/data/plugins/astrbot_plugin_ekta_batch_login/vendor
+npm install --omit=dev
 ```
 
 ## 安全边界
 
 - 默认允许 AstrBot 管理员或群管理员使用。
-- 不输出密码、Token 或二维码解密明文。
+- 普通任务不输出密码、Token 或二维码解密明文；`.ekta account list` 会按管理员命令显示密码。
 - 活动要求报名材料时跳过，不自动填充材料。
 - 未经 dry-run 验证前，建议先开启 `dry_run_by_default`。
