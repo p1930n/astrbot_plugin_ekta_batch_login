@@ -179,7 +179,7 @@ class EktaCommandService:
         )
         tasks = payload.get("tasks") if isinstance(payload.get("tasks"), list) else []
         if not tasks:
-            return "没有识别到可处理的第二课堂二维码。"
+            return _format_no_qr_tasks(payload)
 
         effective_dry_run = dry_run or self._settings.dry_run_by_default
         enqueue_result = await self._task_queue.enqueue(
@@ -233,6 +233,28 @@ class EktaCommandService:
 def _is_ekta_command_text(text: str) -> bool:
     normalized = text.strip().casefold()
     return normalized.startswith((".ekta", "/ekta"))
+
+
+def _format_no_qr_tasks(payload: dict[str, Any]) -> str:
+    lines = ["没有识别到可处理的第二课堂二维码。"]
+    skipped = payload.get("skippedImages")
+    if not isinstance(skipped, list):
+        return lines[0]
+
+    detail_lines: list[str] = []
+    for item in skipped[:5]:
+        if not isinstance(item, dict):
+            continue
+        image_index = item.get("imageIndex") or "?"
+        reason = str(item.get("reason") or "二维码类型未知").strip()
+        detail_lines.append(f"图片 {image_index}: {reason}")
+    if detail_lines:
+        lines.append("跳过原因:")
+        lines.extend(detail_lines)
+    omitted = len(skipped) - len(detail_lines)
+    if omitted > 0:
+        lines.append(f"... 其余 {omitted} 张图片已省略")
+    return "\n".join(lines)
 
 
 def _context_config(context: Any) -> object:

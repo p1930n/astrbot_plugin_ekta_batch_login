@@ -10,6 +10,7 @@ const DEFAULT_DEVICE = "FAAE6E21-013F-42D1-B722-599DE3DC340F";
 const ACTIVITY_QR_SOURCE = "schActivityCode@Xj";
 const DEFAULT_DELAY_MS = 1000;
 const DEFAULT_MAX_ACCOUNTS = 80;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 function loadDependency(name) {
   try {
@@ -260,22 +261,62 @@ async function readImageBuffer(source) {
 }
 
 async function decodeImageQr(source) {
-  const jpeg = loadDependency("jpeg-js");
   const jsQR = loadDependency("jsqr");
   const buffer = await readImageBuffer(source);
-  let image;
-  try {
-    image = jpeg.decode(buffer, { useTArray: true });
-  } catch (_) {
-    throw new Error("图片不是可识别的 JPG 格式");
-  }
-  const qr = jsQR(new Uint8ClampedArray(image.data.buffer), image.width, image.height, {
+  const image = decodeImage(buffer);
+  const qr = jsQR(image.data, image.width, image.height, {
     inversionAttempts: "attemptBoth",
   });
   if (!qr) {
     throw new Error("没有识别到二维码");
   }
   return qr.data;
+}
+
+function decodeImage(buffer) {
+  if (isPng(buffer)) {
+    return decodePngImage(buffer);
+  }
+  if (isJpeg(buffer)) {
+    return decodeJpegImage(buffer);
+  }
+  throw new Error("图片不是可识别的 JPG 或 PNG 格式");
+}
+
+function isPng(buffer) {
+  return buffer.length >= PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+}
+
+function isJpeg(buffer) {
+  return buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xd8;
+}
+
+function decodePngImage(buffer) {
+  const { PNG } = loadDependency("pngjs");
+  try {
+    const image = PNG.sync.read(buffer);
+    return {
+      data: new Uint8ClampedArray(image.data.buffer, image.data.byteOffset, image.data.byteLength),
+      width: image.width,
+      height: image.height,
+    };
+  } catch (_) {
+    throw new Error("图片不是可识别的 PNG 格式");
+  }
+}
+
+function decodeJpegImage(buffer) {
+  const jpeg = loadDependency("jpeg-js");
+  try {
+    const image = jpeg.decode(buffer, { useTArray: true });
+    return {
+      data: new Uint8ClampedArray(image.data.buffer, image.data.byteOffset, image.data.byteLength),
+      width: image.width,
+      height: image.height,
+    };
+  } catch (_) {
+    throw new Error("图片不是可识别的 JPG 格式");
+  }
 }
 
 function parseRawQuery(raw) {
@@ -300,9 +341,11 @@ function classifyQr(raw, imageIndex) {
 
 function classifyActivityUrl(raw, imageIndex) {
   const params = parseRawQuery(raw);
-  if (params.sourceName && params.activityid) {
-    const sourceName = decryptOssText(params.sourceName);
-    const activityId = decryptOssText(params.activityid);
+  const sourceNameParam = paramValue(params, "sourceName", "sourcename");
+  const activityIdParam = paramValue(params, "activityid", "activityId", "activity_id");
+  if (sourceNameParam && activityIdParam) {
+    const sourceName = decryptOssText(sourceNameParam);
+    const activityId = decryptOssText(activityIdParam);
     if (sourceName === ACTIVITY_QR_SOURCE && activityId) {
       return {
         kind: "activity_join",
@@ -311,11 +354,12 @@ function classifyActivityUrl(raw, imageIndex) {
       };
     }
   }
-  if (/ekta\.qdgw\.edu\.cn/i.test(raw) && params.activityid && /^\d+$/.test(params.activityid)) {
+  const plainActivityId = paramValue(params, "activityid", "activityId", "activity_id", "id");
+  if (/ekta\.qdgw\.edu\.cn/i.test(raw) && plainActivityId && /^\d+$/.test(plainActivityId)) {
     return {
       kind: "activity_join",
       imageIndex,
-      activityId: params.activityid,
+      activityId: plainActivityId,
     };
   }
   return {
@@ -327,10 +371,21 @@ function classifyActivityUrl(raw, imageIndex) {
 
 function classifyEncryptedScanQr(raw, imageIndex) {
   const encrypted = raw.replace("?yiban=yiban_scan_result", "");
-  const decrypted = decryptAppText(encrypted);
+  let decrypted;
+  try {
+    decrypted = decryptAppText(encrypted);
+  } catch (_) {
+    return {
+      kind: "unknown",
+      imageIndex,
+      reason: "不是第二课堂签到二维码",
+    };
+  }
   const query = decrypted.includes("?") ? decrypted.slice(decrypted.indexOf("?") + 1) : "";
   const params = Object.fromEntries(new URLSearchParams(query));
-  if (!params.activityId || !params.userId) {
+  const activityId = paramValue(params, "activityId", "activityid", "activity_id");
+  const userId = paramValue(params, "userId", "userid", "user_id");
+  if (!activityId || !userId) {
     return {
       kind: "unknown",
       imageIndex,
@@ -348,11 +403,26 @@ function classifyEncryptedScanQr(raw, imageIndex) {
   return {
     kind: "sign",
     imageIndex,
-    activityId: params.activityId,
-    scanUserId: params.userId,
+    activityId,
+    scanUserId: userId,
     requestType,
     sp: params.sp || "",
   };
+}
+
+function paramValue(params, ...names) {
+  for (const name of names) {
+    if (params[name]) return params[name];
+  }
+  const normalized = {};
+  for (const [key, value] of Object.entries(params)) {
+    normalized[key.toLowerCase()] = value;
+  }
+  for (const name of names) {
+    const value = normalized[name.toLowerCase()];
+    if (value) return value;
+  }
+  return "";
 }
 
 function getQrRequestType(decrypted) {
